@@ -18,15 +18,15 @@ FUEL_CONSUMPTION_PER_KM = 0.1
 FUEL_COST_PER_LITER = 5.5
 
 # Definir o nome do lugar e criar o grafo
-place_name = "Sudeste, Brasil"
+place_name = "Santo André, Brasil"
 graph = ox.graph_from_place(place_name, network_type='drive', simplify=True)
 
 # Adicionar comprimento das arestas para garantir que todas tenham o atributo 'length'
 graph = ox.distance.add_edge_lengths(graph)
 
 # Pontos de referência para rota
-POINT_A = (-23.6531797, -46.5313029)  # Coordenadas de A
-POINT_B = (-20.0228668,-44.7984994)  # Coordenadas de B
+POINT_A = (-23.6531797,-46.5313029)
+POINT_B = (-23.6602437,-46.5590211)
 
 # Função de cálculo de estatísticas
 def calculate_route_statistics(graph, route):
@@ -47,33 +47,24 @@ def calculate_route_statistics(graph, route):
 
 # Função para encontrar a rota com base no critério
 def find_best_route(graph, point_a, point_b, priority):
+    weight_map = {
+        'distancia': 'length',
+        'tempo': 'travel_time',
+        'combustivel': lambda u, v, d: d.get('length', 0) * FUEL_CONSUMPTION_PER_KM,
+        'custo': lambda u, v, d: d.get('length', 0) * FUEL_CONSUMPTION_PER_KM * FUEL_COST_PER_LITER
+    }
+    weight = weight_map.get(priority, 'length')
     orig_node = ox.distance.nearest_nodes(graph, point_a[1], point_a[0])
     dest_node = ox.distance.nearest_nodes(graph, point_b[1], point_b[0])
 
-    # Adicionar velocidades e tempos de viagem se a prioridade for 'tempo'
     if priority == 'tempo':
         graph = ox.add_edge_speeds(graph)
         graph = ox.add_edge_travel_times(graph)
-
-    # Definindo a lógica de peso para cada prioridade
-    if priority == 'distancia':
-        weight = 'length'
-    elif priority == 'tempo':
-        weight = 'travel_time'
-    elif priority == 'combustivel':
-        # Peso considerando o comprimento da aresta e a inclinação
-        weight = lambda u, v, d: d.get('length', 0) * FUEL_CONSUMPTION_PER_KM + (d.get('grade_abs', 0) / 100) * d.get('length', 0) * FUEL_CONSUMPTION_PER_KM
-    elif priority == 'custo':
-        # Cálculo do custo total de combustível com base na distância e inclinação
-        weight = lambda u, v, d: (d.get('length', 0) * FUEL_CONSUMPTION_PER_KM * FUEL_COST_PER_LITER) + ((d.get('grade_abs', 0) / 100) * d.get('length', 0) * FUEL_CONSUMPTION_PER_KM * FUEL_COST_PER_LITER)
-    else:
-        raise ValueError("Prioridade inválida. Escolha entre 'distancia', 'tempo', 'combustivel' ou 'custo'.")
 
     # Garantir que todas as arestas tenham o atributo 'length' com valor padrão de 0
     for u, v, data in graph.edges(data=True):
         data.setdefault('length', 0)
 
-    # Calcular o caminho mais curto com base no peso definido
     return ox.shortest_path(graph, orig_node, dest_node, weight=weight)
 
 # Função para salvar o mapa da rota
@@ -95,7 +86,7 @@ def save_route_map(graph, route, filename):
     # Ajustar os limites para aumentar o zoom
     ax.set_xlim(min(x_coords) - 0.01, max(x_coords) + 0.01)  # Ajuste o valor para controlar o zoom
     ax.set_ylim(min(y_coords) - 0.01, max(y_coords) + 0.01)  # Ajuste o valor para controlar o zoom
-    ax.set_title("Rota de A para B | Santo André", fontsize=15)
+    ax.set_title("Rota de A para B | São Paulo", fontsize=15)
 
     fig.savefig(filename, bbox_inches='tight', dpi=300)  # Salvar com o nome fornecido
     plt.close(fig)
@@ -150,11 +141,21 @@ def generate_pdf_report(stats_list, route_map_paths, criteria):
         pdf.add_table(stats_df)
         pdf.image(path, x=10, w=190)
     
-    # Adicionar o gráfico comparativo
     pdf.add_page()
     pdf.chapter_title("Gráfico Comparativo de Estatísticas")
     pdf.image('comparative_route_statistics.png', x=10, w=190)
+    pdf.output("relatorio_comparativo_rotas.pdf")
+
+    # Adicionar as preferências ao relatório
+    for i, (stats, path, crit) in enumerate(zip(stats, route_map_paths, criteria)):
+        stats_df = pd.DataFrame(stats.items(), columns=['Estatística', 'Valor'])
+        pdf.chapter_title(f"Critério: {crit.capitalize()}")  # Título com o critério utilizado
+        pdf.add_table(stats_df)
+        pdf.image(path, x=10, w=190)
     
+    pdf.add_page()
+    pdf.chapter_title("Gráfico Comparativo de Estatísticas")
+    pdf.image('comparative_route_statistics.png', x=10, w=190)
     pdf.output("relatorio_comparativo_rotas.pdf")
 
 # Cálculo de rotas e estatísticas
